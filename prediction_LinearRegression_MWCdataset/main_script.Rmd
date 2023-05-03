@@ -1,0 +1,328 @@
+---
+title: "MATHS 7107 Data Taming Assigmment 04"
+author: "Possakorn Kittipipatthanapong (a1873765)"
+date: "`r Sys.Date()`"
+header-includes: #allows you to add in your own Latex packages
+- \usepackage{float} #use the 'float' package
+- \floatplacement{figure}{H} #make every figure with caption = h
+output: 
+  pdf_document:
+    fig_caption: true
+    latex_engine: pdflatex
+    df_print: kable
+    extra_dependencies: ["float"]
+    toc: false
+geometry: margin=1in
+fontfamily: mathpazo
+fontsize: 11pt
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE
+                      , message = FALSE
+                      , warning = FALSE
+                      , fig.pos = 'H'
+                      , out.extra = ''
+                      , collapse = TRUE
+                      )
+```
+
+# Section00: Executive Summary
+  
+This project aimed to develop a new prediction model to enhance the accuracy of evaporation estimation by the Melbourne Water Corporation (MWC), being responsible for managing Melbourne, Australia's water supply. Following methodology, Melbourne Water Corporation could use these results to demonstrate the ability to make predictions for individual days at Cardinia reservoir, and present confidence intervals for these predictions.  
+
+First, analysis start with exploratory the outcome of the previous financial year. The Melbourne Water Corporation utilized this data to improve the management of Cardinia Reservoir. The analysis involved bivariate summaries and model selection methodology, resulting in only four significant predictors, including Month, Minimum temperature, Relative humidity, and the interaction between Month and Relative humidity.  
+
+The Minimum temperature factors had a positive influence on the level of evaporation, whereas Relative humidity had an opposite impact. The pattern analysis revealed that there was a higher evaporation rate in summer from December to April, particularly in March. However, the rate of evaporation decreased after May, with a significant reduction in evaporation during June.
+
+To evaluate the model's effectiveness, the MWC performed general applications with extreme scenarios. The scenario on January 13, 2020, which had a high minimum temperature and low relative humidity, produced the highest anticipated evaporation. Conversely, the scenario in June, which had a lower minimum temperature and higher relative humidity, demonstrated the lowest amount of evaporation when compared to other scenarios. 
+
+The newly developed prediction model by the the Melbourne Water Corporation will help forecast evaporation based on important features to improve water supply management , create the consistency of the water management, and utilize this data to ensure an uninterrupted water supply from upstream, particularly during summer with high minimum temperatures or low relative humidity.  
+
+\newpage
+
+# Section01: Methodology
+  
+In this section, we focused on how to analyse the Melbourne weather observations dataset using many methods to interpret including Bivariate summaries to find the variable relationship and summary statistics, and model selection following linear summary and ANOVA analysis.
+
+```{r library, echo = FALSE, message = FALSE}
+## Methodology: library selection
+library(tidyverse)
+# library(skimr)
+# library(mlbench)
+library(knitr)
+library(kableExtra)
+library(equatiomatic)
+library(corrplot)
+```
+
+```{r, regfloat=FALSE}
+## Methodology: import dataset 
+melbourne <- read.csv("sc/melbourne.csv")
+```
+
+
+## Bivariate summaries  
+In our analysis, we will focus on following potential influences on amount of evaporation in a day including  
+• Month  
+• Day of the week  
+• Maximum temperature in degrees Celsius  
+• Minimum temperature in degrees Celsius  
+• Relative humidity, as measured at 9am.  
+
+So, the table will be prepared following the condition above and shown as the table below
+  
+```{r data preparation, fig.pos = "H", out.extra = ""}
+## Methodology: Bivariate summaries
+melbourne_prep <- melbourne %>% 
+  mutate(Month = factor(month(Date), ordered = FALSE),
+         DayOfWeek = factor(wday(Date, label = TRUE), ordered = FALSE)
+         ) %>% 
+  rename(max_temp_c = "Maximum.Temperature..Deg.C.",
+         min_temp_c = "Minimum.temperature..Deg.C.",
+         relative_humidity = "X9am.relative.humidity....",
+         evaporation_mm = "Evaporation..mm."
+         ) %>% 
+  select(Month,
+         DayOfWeek,
+         max_temp_c,
+         min_temp_c,
+         relative_humidity,
+         evaporation_mm
+         )
+kable(head(melbourne_prep,5), caption = "prepared melbourne evaporation data with related feature with first 5 rows") %>% 
+  kable_styling(position = "left", latex_options = "hold_position")
+```
+
+Exploring the relationship between response and each predictors is necessary to understand the background of the dataset and also increasing chance to select the appropriate predictors to our model. Then, the relationship of response with each predictors could visualize the association following the plot below;  
+
+### Plot evaporation in mm with quantitative predictor  
+
+The relationship between quantitative predictors and response could display through the **Scatter plot** following the plot below;
+
+```{r, fig.cap = "Scatter plot for all potential quantitative predictors", fig.height=2.5}
+# Bivariate summaries: quantitative predictors
+melbourne_prep %>% 
+  select(max_temp_c,
+         min_temp_c,
+         relative_humidity,
+         evaporation_mm
+         ) %>% 
+  gather(-evaporation_mm, key = "predictors", value = "values") %>% 
+  ggplot(aes(x = values, y = evaporation_mm)) +
+  geom_point() +
+  geom_smooth(method='lm') +
+  facet_wrap(vars(predictors), scales = "free")
+```  
+  
+Following the Maximum temperature and Minimum temperature in degrees Celsius, they represent the moderate positive linear relationship. On the other hands, relationship between relative humidity and evaporation interpret the moderate negative values.
+
+### Plot evaporation in mm with categorical predictor  
+
+The relationship between categorical predictors and response could display through the **Box plot** following the plot below;
+
+```{r , fig.cap = "Box plot for all potential categorical predictors", fig.height=3}
+# Bivariate summaries: categorical predictors
+melbourne_prep %>% 
+  select(Month,
+         DayOfWeek,
+         evaporation_mm
+         ) %>% 
+  gather(-evaporation_mm, key = "predictors", value = "values") %>% 
+  ggplot(aes(x = fct_inorder(values), y = evaporation_mm)) +
+  geom_boxplot() +
+  facet_wrap(vars(predictors), scales = "free")
+```  
+  
+For Day of Week predictor, they show the similar trend of median weight. Following the Month predictor, middle of the year since April until September represent the lower median weight compared to other periods.  
+
+### Plot included interaction between each predictors
+
+```{r , fig.cap = "scatter plot for all related predictors", fig.height=6}
+# Bivariate summaries: multiple scatter plots
+pairs(melbourne_prep[, c("max_temp_c", "min_temp_c", "relative_humidity","Month")])
+```  
+
+For Relationship between Month and other predictors, both of relationship with minimum temperature and maximum temperature provide the similar pattern compared to relationship of Month and evaporation. However, pattern of Month and relative humidity represent the unique pattern with highest mean average on June.
+
+<!-- \newpage -->
+
+## Model selection
+
+Following the Melbourne dataset, we could build a model to predict the evaporation following the list of predictors from previous Bivariable summaries including with Month, Day of the week, Maximum temperature in degrees Celsius, Minimum temperature in degrees Celsius, and Relative humidity, as measured at 9am. And, also consider an interaction term of Month and relative humidity. Therefore, this model will be predicted all of predictors with significant effect to evaporation following the procedure:  
+
+### 01 Fit a model containing all the possible predictors
+
+```{r}
+# Model selection: first loop - fit model
+evaporation_model <- lm(evaporation_mm ~ 
+                          Month +
+                          DayOfWeek +
+                          max_temp_c + 
+                          min_temp_c + 
+                          relative_humidity + 
+                          Month:relative_humidity
+                        , data = melbourne_prep)
+extract_eq(evaporation_model, wrap = TRUE, terms_per_line = 2)
+```
+
+### 02 Determine the p-value for inclusion of each predictor:
+
+**1) P-values for quantitative variables can be determined using the linear model summary.**
+
+```{r}
+# Model selection: first loop - Determine the p-value - linear model summary
+summary(evaporation_model)
+```
+
+**2) P-values for categorical variables, or interactions containing categorical variables, can be determined using an ANOVA.**  
+
+```{r}
+# Model selection: first loop - Determine the p-value - ANONA analysis
+kable(anova(evaporation_model), caption = "Model selection for finding the appropriate feature - first loop") %>% 
+  kable_styling(position = "left", latex_options = "hold_position")
+```
+
+### 03 Remove the predictor with the highest p-value for inclusion, unless all remaining predictors are significant at the 5  
+
+Following the determining the p-value for inclusion, there are two methods to remain only significant predictors including P-values for quantitative variables and P-values for categorical variables. For quantitative variables, max_temp_c represent the highest P-value, 0.56074, determined using the linear model summary. For categorical variables, DayOfWeek show the highest P-value equal to 0.1025018 in ANONA analysis. Therefore, these predictors will be removed to remain predictors having significant at the 5.
+
+### 04 Update your model to include only the remaining predictors.  
+
+```{r}
+# Model selection: first loop - fit model
+evaporation_model <- lm(evaporation_mm ~ 
+                          Month +
+                          min_temp_c + 
+                          relative_humidity + 
+                          Month:relative_humidity
+                        , data = melbourne_prep)
+extract_eq(evaporation_model, wrap = TRUE, terms_per_line = 2)
+```
+
+```{r}
+# Model selection: check loop - Determine the p-value - linear model summary
+summary(evaporation_model)
+# Model selection: check loop - Determine the p-value - ANONA analysis
+kable(anova(evaporation_model), caption = "Model selection for finding the appropriate feature - first loop") %>% 
+  kable_styling(position = "left", latex_options = "hold_position")
+```
+
+The p values in regression analysis play a crucial role in assessing whether the relationships observed in the sample data hold true for the entire population. The linear regression p value for each independent variable tests the null hypothesis that the variable has no correlation with the dependent variable. If there is no correlation, it is not possible to confirm that there is any impact on the population level based on the available evidence. On the other hand, the p-value is less than your significance level, your sample data provide enough evidence to reject the null hypothesis for the entire population.  
+
+The final model selection process identified several important predictors, such as Month, Minimum temperature in Celsius, Relative humidity, and the interaction between Month and Relative humidity. However, unlike in the bivariate analyses, Maximum temperature and day of the week were not considered significant predictors based on their P-values and were therefore dropped from the model.
+
+## Model diagnostics
+
+It is essential to validate all the model assumptions of the Linear Regression model, which includes defining the functional form. If any of these assumptions are not met, it is necessary to review and revise the model. There are four assumptions that we have made following;
+
+### Check the linearity assumption
+
+```{r, fig.cap = "residual versus fitted plot - check Linearity on evaporation model"}
+## Model diagnostics - check assumption Linearity
+plot(evaporation_model, which = 1)
+```
+
+The assumption of linearity justified because the red reference present the mostly straight and only few points are threw off the guideline.
+
+### Check the homoscedasticity assumption
+
+```{r, fig.cap="square root of the standardised residual versus fitted plot - check homoscedasticity on evaporation model"}
+## Model diagnostics - check assumption homoscedasticity
+plot(evaporation_model, which = 3)
+```
+
+The assumption of homoscedasticity justified because there are no apparent trends and the reference line visual the roughly straight and little flat. Therefore, it could indicate that this model constantly spread.
+  
+### Check the Normality assumption
+
+```{r, fig.cap="normal QQ-plot - check Normality on evaporation model"}
+## Model diagnostics - check assumption Normality
+plot(evaporation_model, which = 2)
+```
+
+The assumption of Normality justified because the points should lie along the dotted line. And, there are few points that lie less than -1.5 on the x-axis and greater than 1.5 on axis drift away from the reference line. That are not significant because of minority of that group.
+
+### Check the independence assumption
+  
+Following the information due to Melbourne’s weather observations data set, there are a few possible dependence impacts between each data points including effect of the weather on the curernt date will affect to coming day or specific location to collect all the data points. Therefore, it is the limitation that need to acknowledge and prevent to decide with biased and unreliable estimates of the regression coefficients.
+
+
+\newpage
+
+# Section02: Results
+
+## Model interpretation
+
+In this section, a model need to interpret the coefficients related to each predictor. For the intercept of model, it mean that when all of the predictors are zero with reference category on January, the expected value of evaporation in mm is `r round(summary(evaporation_model)$coefficients[1, 1],3)`. For increasing the minimum temperature by one degrees Celsius, the evaporation with other zero predictors will increase by `r round(summary(evaporation_model)$coefficients[13, 1],3)` mm. On the other hands, increasing the relative humidity by one unit will decrease evaporation `r -round(summary(evaporation_model)$coefficients[14, 1],3)` mm.
+
+Following categorical predictors, there are two variables put in to the model including Month and interaction between month and relative humidity.  
+For Month predictor, there are eleven coefficients following the **Month01** as the reference category. As the coefficient of **Month06** equal to `r round(summary(evaporation_model)$coefficients[6, 1],3)`, it presents the estimate the mean weight of evaporation on Month06 being the lowest value lower than mean weight of evaporation on Month01. However, the mean weight of evaporation on **Month03**, `r round(summary(evaporation_model)$coefficients[3, 1],3)`, being the biggest value higher than mean weight of evaporation on Month01. With **P-value of Month6 and Month3** equal to **`r round(summary(evaporation_model)$coefficients[6, 4],3)` and `r round(summary(evaporation_model)$coefficients[3, 4],3)`** respectively, the indicators represent the significant difference compared to Month01.  
+Finally, if we select the **Month03** with assumption that others predictors equal to zero, the evaporation will be **intercept + coefficient on Month3** as **8.589 + 5.263 = `r 8.589 + 5.263`** mm.  
+  
+For interaction between month and relative humidity, there are also eleven coefficients following **Month01 interacted with relative humidity** as the reference category. Following the coefficient of **Month10:relative_humidity** equal to 0.089443, it presents the estimate the mean weight of evaporation being the biggest value higher than mean weight of evaporation on Month01 with relative_humidity. Meanwhile, **interaction term between Month03 and relative humidity**, -0.800 , is the lowest value less than mean weight of evaporation on Month01 with relative_humidity.  
+For example, if we select the **Month10** assuming that **relative humidity equal to 50 and others are zero**, the evaporation will be equal to **intercept + ( coefficients of relative humidity + coefficients of Month10:relative humidity ) X relative humidity** = **8.589 + ( -0.100 + 0.089 ) x 50** = **8.039** mm.
+
+## Prediction
+
+MWC is keenly interested in utilizing your model in various scenarios, including extreme ones, and would like your predictions on the amount of evaporation, measured in millimeters, for specific types of days described below.
+Use case 01: February 29, 2020, if this day has a minimum temperature of 13.8 degrees and reaches a maximum of 23.2 degrees, and has 74% humidity at 9am.  
+Use case 02: December 25, 2020, if this day has a minimum temperature of 16.4 degrees and reaches a maximum of 31.9 degrees, and has 57% humidity at 9am.  
+Use case 03: January 13, 2020, if this day has a minimum temperature of 26.5 degrees and reaches a maximum of 44.3 degrees, and has 35% humidity at 9am.  
+Use case 04: July 6, 2020, if this day has a minimum temperature of 6.8 degrees and reaches a maximum of 10.6 degrees, and has 76% humidity at 9am. 
+
+```{r}
+## Model Prediction - create the use case dataset
+input_usecase <- tibble(
+  Month = as.factor(month(as.Date(c("2020-02-29","2020-12-25","2020-01-13","2020-07-06")))),
+  min_temp_c = c(13.8,16.4,26.5,6.8),
+  max_temp_c = c(23.2,31.9,44.3,10.6),
+  relative_humidity = c(74,57,35,76)
+)
+
+## Model Prediction - create the prediction table
+predict_evaporation <- data.frame(Cases = c('01','02','03','04'),
+                                  Date = c("2020-02-29","2020-12-25","2020-01-13","2020-07-06"),
+                                  as.tibble(predict(evaporation_model, input_usecase, interval = "prediction", level = 0.95))
+                                  ) %>% 
+  rename('Lower Boundary Interval - evaporation(mm)' = "lwr",
+         'Upper Boundary Interval - evaporation(mm)' = "upr",
+         'Expected evaporation(mm)' = "fit"
+         )
+
+## Model Prediction - visualize the predicted table output
+kable(predict_evaporation, caption = "Predicted table results with prediction intervals") %>% 
+  kable_styling(position = "left", latex_options = "hold_position") %>% 
+  column_spec(3:5, width = "3.9cm")
+```
+
+Following the model Prediction, results represent the difference outcome from different following the table above;  
+On **02 Feb, 2020** , it show the expected evaporation, **`r round(predict_evaporation$'Expected evaporation(mm)'[1],3)`** mm with confidence interval range from **`r round(predict_evaporation$'Lower Boundary Interval - evaporation(mm)'[1],3)`** mm to **`r round(predict_evaporation$'Upper Boundary Interval - evaporation(mm)'[1],3)`** mm.  
+On **25 Dec, 2020** , it show the expected evaporation, **`r round(predict_evaporation$'Expected evaporation(mm)'[2],3)`** mm with confidence interval range from **`r round(predict_evaporation$'Lower Boundary Interval - evaporation(mm)'[2],3)`** mm to **`r round(predict_evaporation$'Upper Boundary Interval - evaporation(mm)'[2],3)`** mm.  
+On **13 Jan, 2020** , it show the expected evaporation, **`r round(predict_evaporation$'Expected evaporation(mm)'[3],3)`** mm with confidence interval range from **`r round(predict_evaporation$'Lower Boundary Interval - evaporation(mm)'[3],3)`** mm to **`r round(predict_evaporation$'Upper Boundary Interval - evaporation(mm)'[3],3)`** mm.  
+On **06 July, 2020** , it show the expected evaporation, **`r round(predict_evaporation$'Expected evaporation(mm)'[4],3)`** mm with confidence interval range from **`r round(predict_evaporation$'Lower Boundary Interval - evaporation(mm)'[4],3)`** mm to **`r round(predict_evaporation$'Upper Boundary Interval - evaporation(mm)'[4],3)`** mm.   
+
+# Section03: Discussion
+
+Interpreting the results from the prediction, it show the lowest expected evaporation, **2.265 mm** with confidence interval range from **-2.111 mm** to **6.642 mm**, on 06 July 2020. However, predicted result On 13 Jan 2020 is the highest expected evaporation equal to **14.872 mm** with confidence interval range from **10.105 mm** to **19.640 mm**.  
+
+In the cases that the evaporation level at MWC's Cardinia Reservoir exceeds 10mm, the corporation implements temporary measures to ensure a consistent water supply. **On 13 Jan 2020**, we could say with 95% confidence to transferring water from its Silvan Reservoir, located upstream. However, this will not occur on other predicted days. 
+
+\newpage
+
+# Section04: Conclusion
+
+The objective of this projects is creating the new prediction model to perform the better accuracy of evaporation estimation by the Melbourne Water Corporation (‘MWC’), the organization responsible for managing Melbourne, Australia's water supply has been tasked with creating a report that pertains to evaporation. After interpreting the outcome following the information on previous financial year, Melbourne Water Corporation utilizes this data to enhance the management of Cardinia Reservoir in the southeastern region of the city.  
+
+Following Bivariate summaries and model selection methodology, there are only four remaining significant predictors including with Month, Minimum temperature, Relative humidity, and interaction between Month and Relative humidity. For Minimum temperature predictors, it present the positive effect to amount of evaporation. However, relative humidity absolutely show the opposite impact. The pattern of the month from December to April, in the Summer, shows a higher rate of evaporation, especially in March. However, the rate of evaporation decreases after May, with significantly less evaporation occurring in June.  Nonetheless, it is important to acknowledge that the independent assumption has certain limitations that should be taken into account to avoid making misleading decisions.
+
+To analyze and evaluate model, the Melbourne Water Corporation perform the general application with extreme scenarios to measure the outcome. The case on 13 January 2020 with high minimum temperature and less relative humidity show the highest expected evaporation. While, the case during June having less minimum temperature and high relative humidity represent the lowest amount of evaporation compared to other scenarios.
+
+In conclusion, Melbourne Water Corporation has developed a new predictive model that can forecast evaporation based on significant features to enhance water supply management and ensure the consistency of the water supply in the city. The data from this model can be utilized to guarantee an uninterrupted water supply from upstream, especially during summer when there are high minimum temperatures or low relative humidity.
+
+\newpage
+
+# Appendix
+```{r ref.label=knitr::all_labels(), echo = TRUE, eval = F}
+```
+
