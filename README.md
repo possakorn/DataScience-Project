@@ -1,4 +1,4 @@
-# DataScience-Project-R
+# DataScience-Project
 This repository include all of my research projects based on R language which aims to improve my coding skills and extend my experience on specific fields
 - The main purpose of this list is to get hands-on experience on different topics.
 
